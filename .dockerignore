@@ -1,0 +1,10 @@
+# Only runtime sources belong in the container build context.
+**
+!container/
+container/**
+!container/Containerfile
+!container/kiosk-start
+!kiosk/
+kiosk/**
+!kiosk/__init__.py
+!kiosk/prepare_profile.py

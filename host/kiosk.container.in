@@ -1,0 +1,35 @@
+[Unit]
+Description=Firefox split-view Wayland kiosk
+Requires=seatd.service
+After=seatd.service network-online.target
+Wants=network-online.target
+PartOf=seatd.service
+StartLimitIntervalSec=0
+
+[Container]
+Image=@IMAGE@
+Pull=missing
+ContainerName=firefox-kiosk
+User=1000:1000
+GroupAdd=@RENDER_GID@
+DropCapability=all
+# Allow Firefox's chroot helper through the default seccomp profile.
+AddCapability=SYS_CHROOT
+RunInit=true
+EnvironmentFile=/etc/kiosk/kiosk.env
+AddDevice=/dev/dri
+Volume=/dev/input:/dev/input:ro
+Volume=/run/udev:/run/udev:ro
+Volume=/run/seatd.sock:/run/seatd.sock
+ShmSize=512m
+SecurityLabelDisable=true
+StopTimeout=10
+
+[Service]
+Restart=always
+RestartSec=10
+TimeoutStartSec=900
+TimeoutStopSec=45
+
+[Install]
+WantedBy=multi-user.target

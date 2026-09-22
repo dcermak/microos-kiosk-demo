@@ -1,0 +1,46 @@
+#!/bin/bash
+set -euo pipefail
+umask 077
+
+: "${HOME:=/home/kiosk}"
+: "${XDG_RUNTIME_DIR:=/tmp/kiosk-runtime}"
+: "${WLR_BACKENDS:=drm,libinput}"
+: "${KIOSK_URL_LEFT:?Set KIOSK_URL_LEFT}"
+: "${KIOSK_URL_RIGHT:?Set KIOSK_URL_RIGHT}"
+export HOME XDG_RUNTIME_DIR WLR_BACKENDS
+export MOZ_ENABLE_WAYLAND=1 GDK_BACKEND=wayland
+unset DISPLAY
+
+case "$WLR_BACKENDS" in
+    drm,libinput)
+        unset WAYLAND_DISPLAY
+        export LIBSEAT_BACKEND=seatd SEATD_SOCK=/run/seatd.sock
+        test -S "$SEATD_SOCK" || { echo "Missing seatd socket: $SEATD_SOCK" >&2; exit 1; }
+        ;;
+    wayland)
+        : "${WAYLAND_DISPLAY:?Set WAYLAND_DISPLAY to the parent compositor socket}"
+        parent_socket="$WAYLAND_DISPLAY"
+        [[ "$parent_socket" = /* ]] || parent_socket="$XDG_RUNTIME_DIR/$parent_socket"
+        test -S "$parent_socket" || { echo "Missing parent Wayland socket: $parent_socket" >&2; exit 1; }
+        export WAYLAND_DISPLAY
+        unset LIBSEAT_BACKEND SEATD_SOCK
+        ;;
+    headless)
+        unset WAYLAND_DISPLAY LIBSEAT_BACKEND SEATD_SOCK
+        ;;
+    *)
+        echo "Unsupported WLR_BACKENDS: $WLR_BACKENDS (use drm,libinput, wayland, or headless)" >&2
+        exit 1
+        ;;
+esac
+
+profile="$HOME/profile"
+mkdir -p "$XDG_RUNTIME_DIR" "$profile"
+chmod 0700 "$XDG_RUNTIME_DIR" "$profile"
+
+python3 -I -m kiosk.prepare_profile "$profile"
+
+# Firefox reads profile/user.js itself. No --user-js flag or JS invocation.
+# The URLs are already in sessionstore.jsonlz4; CLI URLs would add extra tabs.
+exec dbus-run-session -- cage -- \
+    firefox --no-remote --profile "$profile" --kiosk

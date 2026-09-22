@@ -1,0 +1,16 @@
+[Unit]
+Description=Seat access for the Firefox kiosk
+After=systemd-user-sessions.service
+Conflicts=getty@tty1.service
+
+[Service]
+Type=simple
+ExecStartPre=/usr/bin/chvt 1
+ExecStart=/usr/bin/seatd -g kiosk -l info
+ExecStartPost=/bin/sh -c 'until test -S /run/seatd.sock; do sleep 0.1; done'
+TimeoutStartSec=15
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

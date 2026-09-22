@@ -1,0 +1,99 @@
+name: Firefox container
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '0 4 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Install check dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y liblz4-1 shellcheck
+          pipx install ruff
+      - name: Check source
+        run: |
+          ruff check .
+          ruff format --check .
+          python3 -m tests.selftest
+          shellcheck build-installer.sh container/kiosk-start host/combustion/script tests/*.sh
+      - name: Build fresh image
+        run: docker build -f container/Containerfile -t kiosk-ci:test .
+      - name: Test image
+        env:
+          CONTAINER_ENGINE: docker
+        run: tests/container-smoke.sh kiosk-ci:test
+
+  publish:
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'schedule')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    concurrency:
+      group: firefox-ghcr-main
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Install check dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y liblz4-1 shellcheck
+          pipx install ruff
+      - name: Check source
+        run: |
+          ruff check .
+          ruff format --check .
+          python3 -m tests.selftest
+          shellcheck build-installer.sh container/kiosk-start host/combustion/script tests/*.sh
+      - name: Build fresh image
+        id: build
+        run: |
+          docker build \
+            --label "org.opencontainers.image.source=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            -f container/Containerfile -t kiosk-ci:test .
+          echo "image=$(docker image inspect --format '{{.Id}}' kiosk-ci:test)" >> "$GITHUB_OUTPUT"
+      - name: Test image
+        env:
+          CONTAINER_ENGINE: docker
+          IMAGE: ${{ steps.build.outputs.image }}
+        run: tests/container-smoke.sh "$IMAGE"
+      - name: Publish tested image
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE: ${{ steps.build.outputs.image }}
+        run: |
+          current=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')
+          if [[ "$current" != "$GITHUB_SHA" ]]; then
+            echo 'Skipped publishing: main advanced while this image was building.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          reference="ghcr.io/${GITHUB_REPOSITORY,,}/firefox:latest"
+          trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker tag "$IMAGE" "$reference"
+          docker push "$reference"
+          digest=$(docker image inspect --format '{{index .RepoDigests 0}}' "$reference")
+          version=$(docker run --rm --network=none --entrypoint firefox "$IMAGE" --version)
+          {
+            echo "Published: \`$reference\`"
+            echo "Deploy by digest: \`$digest\`"
+            echo "Source commit: \`$GITHUB_SHA\`"
+            echo "Browser: $version"
+            echo 'Headless smoke tests passed; validate native split view and NUC hardware before deployment.'
+          } >> "$GITHUB_STEP_SUMMARY"

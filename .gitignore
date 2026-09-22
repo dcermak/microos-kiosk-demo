@@ -1,0 +1,5 @@
+build/
+*.iso
+*.hash
+__pycache__/
+/.mypy_cache/

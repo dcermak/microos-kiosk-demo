@@ -1,0 +1,54 @@
+#!/bin/bash
+# combustion: network
+set -euo pipefail
+umask 077
+# Combustion runs this with its configuration directory as the working directory
+# !Do not use set -x here: the input includes a password hash!
+
+packages=(openssh-server openssl shadow podman seatd kbd firewalld vim-small)
+while IFS= read -r package; do
+    [[ -z "$package" || "$package" == \#* ]] && continue
+    [[ "$package" =~ ^[a-zA-Z0-9][a-zA-Z0-9.+:_-]*$ ]] || exit 1
+    packages+=("$package")
+done < extra-packages.txt
+zypper --non-interactive install --no-recommends "${packages[@]}"
+
+# Fixed IDs match the CI image. Abort if this is not a fresh compatible host.
+if getent group kiosk >/dev/null; then
+    [[ "$(getent group kiosk | cut -d: -f3)" == 1000 ]] || exit 1
+else
+    groupadd --gid 1000 kiosk
+fi
+if id kiosk >/dev/null 2>&1; then
+    [[ "$(id -u kiosk)" == 1000 && "$(id -g kiosk)" == 1000 ]] || exit 1
+else
+    useradd --uid 1000 --gid 1000 --home-dir /var/lib/kiosk \
+        --no-create-home --shell /usr/sbin/nologin kiosk
+fi
+
+hash=$(cat root-password.hash)
+printf 'root:%s\n' "$hash" | chpasswd -e
+unset hash
+install -d -m 0700 /root/.ssh
+install -m 0600 authorized_keys /root/.ssh/authorized_keys
+install -d -m 0755 /etc/ssh/sshd_config.d
+install -m 0644 units/00-kiosk-ssh.conf /etc/ssh/sshd_config.d/00-kiosk.conf
+ssh-keygen -A
+/usr/sbin/sshd -t
+if command -v restorecon >/dev/null; then restorecon -RF /root/.ssh; fi
+
+install -d -m 0755 /etc/kiosk /etc/containers/systemd /etc/systemd/system
+install -m 0600 kiosk.env /etc/kiosk/kiosk.env
+install -m 0644 units/seatd.service /etc/systemd/system/seatd.service
+render_gid=$(getent group render | cut -d: -f3)
+[[ "$render_gid" =~ ^[0-9]+$ ]] || { echo 'Missing host render group' >&2; exit 1; }
+sed "s/@RENDER_GID@/$render_gid/g" kiosk.container > /etc/containers/systemd/kiosk.container
+chmod 0644 /etc/containers/systemd/kiosk.container
+
+firewall-offline-cmd --add-service=ssh
+systemctl enable sshd.service firewalld.service seatd.service
+systemctl mask getty@tty1.service
+systemctl set-default multi-user.target
+# Quadlet's [Install] enables its generated kiosk.service at boot.
+# Do not systemctl enable the generated service inside this transaction.
+printf 'Provisioned by nuc-kiosk Combustion\n' > /etc/kiosk/provisioned

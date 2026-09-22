@@ -1,0 +1,23 @@
+FROM registry.opensuse.org/opensuse/tumbleweed:latest
+
+RUN zypper --non-interactive install --no-recommends \
+      MozillaFirefox cage libseat1 Mesa-dri dbus-1-daemon \
+      dejavu-fonts xkeyboard-config shadow python3-base \
+    && zypper clean --all \
+    && groupadd --gid 1000 kiosk \
+    && useradd --uid 1000 --gid 1000 --home-dir /home/kiosk --create-home kiosk
+
+COPY container/kiosk-start /usr/local/bin/kiosk-start
+COPY kiosk/__init__.py kiosk/prepare_profile.py /tmp/kiosk/
+RUN purelib="$(python3 -c 'import sysconfig; print(sysconfig.get_path("purelib"))')" \
+    && mkdir -p "$purelib" \
+    && cp -r /tmp/kiosk "$purelib/kiosk" \
+    && rm -rf /tmp/kiosk \
+    && chmod 0755 /usr/local/bin/kiosk-start
+
+ENV HOME=/home/kiosk \
+    XDG_RUNTIME_DIR=/tmp/kiosk-runtime \
+    WLR_BACKENDS=drm,libinput
+USER 1000:1000
+WORKDIR /home/kiosk
+ENTRYPOINT ["/usr/local/bin/kiosk-start"]
