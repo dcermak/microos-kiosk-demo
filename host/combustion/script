@@ -1,9 +1,21 @@
 #!/bin/bash
 # combustion: network
-set -euo pipefail
+set -Eeuo pipefail
 umask 077
 # Combustion runs this with its configuration directory as the working directory
 # !Do not use set -x here: the input includes a password hash!
+
+# /var is outside the root snapshot, so this survives a failed transaction
+exec >> /var/log/combustion-script.log 2>&1
+trap 'printf "ERROR: line %s, status %s\n" "$LINENO" "$?" >&2' ERR
+finish() {
+    local rc=$?
+    printf 'Script exited with status %s\n' "$rc"
+    sync || :
+    exit "$rc"
+}
+trap finish EXIT
+printf '\n=== Combustion script started: %s ===\n' "$(date -Is)"
 
 packages=(openssh-server openssl shadow podman seatd kbd firewalld vim-small)
 while IFS= read -r package; do
@@ -14,6 +26,7 @@ done < extra-packages.txt
 zypper --non-interactive install --no-recommends "${packages[@]}"
 
 # Fixed IDs match the CI image. Abort if this is not a fresh compatible host.
+echo 'Configuring kiosk user and group'
 if getent group kiosk >/dev/null; then
     [[ "$(getent group kiosk | cut -d: -f3)" == 1000 ]] || exit 1
 else
@@ -26,6 +39,7 @@ else
         --no-create-home --shell /usr/sbin/nologin kiosk
 fi
 
+echo 'Configuring root password and SSH'
 hash=$(cat root-password.hash)
 printf 'root:%s\n' "$hash" | chpasswd -e
 unset hash
@@ -37,6 +51,7 @@ ssh-keygen -A
 /usr/sbin/sshd -t
 if command -v restorecon >/dev/null; then restorecon -RF /root/.ssh; fi
 
+echo 'Installing kiosk configuration'
 install -d -m 0755 /etc/kiosk /etc/containers/systemd /etc/systemd/system
 install -m 0600 kiosk.env /etc/kiosk/kiosk.env
 install -m 0644 units/seatd.service /etc/systemd/system/seatd.service
@@ -45,10 +60,12 @@ render_gid=$(getent group render | cut -d: -f3)
 sed "s/@RENDER_GID@/$render_gid/g" kiosk.container > /etc/containers/systemd/kiosk.container
 chmod 0644 /etc/containers/systemd/kiosk.container
 
+echo 'Configuring firewall and services'
 firewall-offline-cmd --add-service=ssh
 systemctl enable sshd.service firewalld.service seatd.service
 systemctl mask getty@tty1.service
 systemctl set-default multi-user.target
 # Quadlet's [Install] enables its generated kiosk.service at boot.
 # Do not systemctl enable the generated service inside this transaction.
+
 printf 'Provisioned by nuc-kiosk Combustion\n' > /etc/kiosk/provisioned

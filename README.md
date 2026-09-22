@@ -94,6 +94,17 @@ Test the finished ISO in a disposable virtual machine with a virtual disk.
 Check disk identification, erase confirmation, and cancellation before
 installing on hardware.
 
+Combustion writes script output, progress messages, and exit status to
+`/var/log/combustion-script.log`. This file survives a transaction rollback on
+the separate `/var` filesystem. After shutting down a failed VM, copy it from
+the host with libguestfs:
+
+```sh
+mkdir -p vm-logs
+sudo guestfish --ro -c qemu:///system -d YOUR_VM_NAME -i \
+  copy-out /var/log/combustion-script.log "$PWD/vm-logs"
+```
+
 ### Writing the USB and installing
 
 Identify the USB device, then unmount its partitions:
