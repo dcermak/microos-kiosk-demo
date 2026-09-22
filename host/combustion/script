@@ -48,8 +48,10 @@ install -m 0600 authorized_keys /root/.ssh/authorized_keys
 install -d -m 0755 /etc/ssh/sshd_config.d
 install -m 0644 units/00-kiosk-ssh.conf /etc/ssh/sshd_config.d/00-kiosk.conf
 ssh-keygen -A
+# The first-boot chroot may not have populated sshd's directories, which fails without them
+install -d -o root -g root -m 0755 /var/lib/empty
 /usr/sbin/sshd -t
-if command -v restorecon >/dev/null; then restorecon -RF /root/.ssh; fi
+if command -v restorecon >/dev/null; then restorecon -RF /root/.ssh /var/lib/empty; fi
 
 echo 'Installing kiosk configuration'
 install -d -m 0755 /etc/kiosk /etc/containers/systemd /etc/systemd/system
