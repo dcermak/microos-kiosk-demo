@@ -1,5 +1,5 @@
 #!/bin/bash
-# Exercise the real entrypoint, D-Bus, Cage and Firefox without graphics devices.
+# Exercise the real entrypoint, Cage and Firefox without graphics devices.
 set -euo pipefail
 
 if (( $# != 1 )); then

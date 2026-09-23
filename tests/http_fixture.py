@@ -74,9 +74,8 @@ def check_runtime():
         except (OSError, UnicodeError):
             continue
         programs.add(Path(program).name)
-    for program in ("dbus-run-session", "dbus-daemon", "cage"):
-        if program not in programs:
-            raise RuntimeError(f"Missing process {program}; found {sorted(programs)}")
+    if "cage" not in programs:
+        raise RuntimeError(f"Cage is not running; found {sorted(programs)}")
     if not programs.intersection({"firefox", "firefox-bin"}):
         raise RuntimeError(f"Firefox is not running; found {sorted(programs)}")
     for path in (

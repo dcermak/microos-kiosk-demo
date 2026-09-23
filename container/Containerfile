@@ -1,7 +1,7 @@
 FROM registry.opensuse.org/opensuse/tumbleweed:latest
 
 RUN zypper --non-interactive install --no-recommends \
-      MozillaFirefox cage libseat1 Mesa-dri dbus-1-daemon \
+      MozillaFirefox cage libseat1 Mesa-dri \
       dejavu-fonts xkeyboard-config shadow python3-base \
     && zypper clean --all \
     && groupadd --gid 1000 kiosk \

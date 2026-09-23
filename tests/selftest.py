@@ -475,7 +475,7 @@ os.execv({sys.executable!r}, [{sys.executable!r}, *sys.argv[2:]])
 """,
         )
         self.executable(
-            "dbus-run-session",
+            "cage",
             """import json, os, sys
 keys = ('HOME', 'XDG_RUNTIME_DIR', 'WLR_BACKENDS', 'WAYLAND_DISPLAY', 'DISPLAY',
         'LIBSEAT_BACKEND', 'SEATD_SOCK', 'MOZ_ENABLE_WAYLAND', 'GDK_BACKEND')
@@ -508,8 +508,6 @@ with open(os.environ['CAPTURE'], 'w') as stream:
         self.assertEqual(
             captured["argv"],
             [
-                "--",
-                "cage",
                 "--",
                 "firefox",
                 "--no-remote",

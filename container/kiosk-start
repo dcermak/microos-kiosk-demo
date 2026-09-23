@@ -42,5 +42,5 @@ python3 -I -m kiosk.prepare_profile "$profile"
 
 # Firefox reads profile/user.js itself. No --user-js flag or JS invocation.
 # The URLs are already in sessionstore.jsonlz4; CLI URLs would add extra tabs.
-exec dbus-run-session -- cage -- \
+exec cage -- \
     firefox --no-remote --profile "$profile" --kiosk
